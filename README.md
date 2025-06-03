@@ -43,6 +43,18 @@ The script reads the input video, detects vehicles frame by frame, draws
 bounding boxes around detected cars, and writes the resulting video to the
 path specified by `--output`.
 
+## Tkinter GUI
+
+For a simple graphical interface built with Tkinter, run:
+
+```bash
+python3 -m code.gui
+```
+
+The GUI lets you choose an input video, specify an output path and optional
+retraining of the SVM. During processing it displays progress information such
+as the current frame number and how many vehicles are detected.
+
 ## Notes
 
 * Detection parameters such as the sliding window sizes and heatmap

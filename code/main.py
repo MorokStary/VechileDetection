@@ -14,7 +14,10 @@ from sklearn.preprocessing import StandardScaler
 # Import `label` directly from `scipy.ndimage` to avoid warnings.
 from scipy.ndimage import label
 from joblib import dump, load
-from moviepy.editor import VideoFileClip
+try:
+    from moviepy.editor import VideoFileClip
+except ImportError:  # moviepy>=2.0 moved VideoFileClip to root
+    from moviepy import VideoFileClip
 
 # -----------------------------------------------------------------------------
 # Configuration
