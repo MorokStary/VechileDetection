@@ -10,7 +10,9 @@ from collections import deque
 from skimage.feature import hog
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
-from scipy.ndimage.measurements import label
+# `scipy.ndimage.measurements` is deprecated in newer SciPy versions.
+# Import `label` directly from `scipy.ndimage` to avoid warnings.
+from scipy.ndimage import label
 from joblib import dump, load
 from moviepy.editor import VideoFileClip
 
