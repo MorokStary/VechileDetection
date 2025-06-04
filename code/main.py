@@ -7,6 +7,7 @@ import glob
 import cv2
 import numpy as np
 from collections import deque
+from typing import List, Tuple
 from skimage.feature import hog
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
@@ -213,14 +214,80 @@ def apply_threshold(heatmap, threshold):
     return heatmap
 
 
-def draw_labeled_bboxes(img, labels):
-    """Draw bounding boxes around labeled regions."""
-    for car_num in range(1, labels[1]+1):
+def get_labeled_bboxes(labels) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+    """Return bounding boxes for labeled regions."""
+    boxes = []
+    for car_num in range(1, labels[1] + 1):
         nonzero = (labels[0] == car_num).nonzero()
         ys, xs = nonzero[0], nonzero[1]
-        bbox = ((np.min(xs), np.min(ys)), (np.max(xs), np.max(ys)))
-        cv2.rectangle(img, bbox[0], bbox[1], (0,0,255), 6)
+        boxes.append(((int(np.min(xs)), int(np.min(ys))),
+                     (int(np.max(xs)), int(np.max(ys)))))
+    return boxes
+
+
+def draw_labeled_bboxes(img, labels):
+    """Draw bounding boxes around labeled regions."""
+    for box in get_labeled_bboxes(labels):
+        cv2.rectangle(img, box[0], box[1], (0, 0, 255), 6)
     return img
+
+
+class VehicleTracker:
+    """Track vehicles across frames to count unique cars."""
+
+    def __init__(self, max_lost: int = 3, iou_threshold: float = 0.3):
+        self.max_lost = max_lost
+        self.iou_threshold = iou_threshold
+        self.tracks: List[dict] = []
+        self.total = 0
+
+    @staticmethod
+    def _iou(a: Tuple[Tuple[int, int], Tuple[int, int]],
+             b: Tuple[Tuple[int, int], Tuple[int, int]]) -> float:
+        xA = max(a[0][0], b[0][0])
+        yA = max(a[0][1], b[0][1])
+        xB = min(a[1][0], b[1][0])
+        yB = min(a[1][1], b[1][1])
+        interW = max(0, xB - xA)
+        interH = max(0, yB - yA)
+        inter = interW * interH
+        if inter == 0:
+            return 0.0
+        areaA = (a[1][0] - a[0][0]) * (a[1][1] - a[0][1])
+        areaB = (b[1][0] - b[0][0]) * (b[1][1] - b[0][1])
+        return inter / float(areaA + areaB - inter)
+
+    def update(self, boxes: List[Tuple[Tuple[int, int], Tuple[int, int]]]):
+        matched = [False] * len(boxes)
+        new_tracks = []
+
+        for track in self.tracks:
+            best_iou = 0.0
+            best_idx = -1
+            for i, box in enumerate(boxes):
+                if matched[i]:
+                    continue
+                iou_val = self._iou(track['box'], box)
+                if iou_val > best_iou:
+                    best_iou = iou_val
+                    best_idx = i
+            if best_iou >= self.iou_threshold:
+                track['box'] = boxes[best_idx]
+                track['lost'] = 0
+                matched[best_idx] = True
+                new_tracks.append(track)
+            else:
+                track['lost'] += 1
+                if track['lost'] <= self.max_lost:
+                    new_tracks.append(track)
+
+        for i, box in enumerate(boxes):
+            if not matched[i]:
+                new_tracks.append({'box': box, 'lost': 0})
+                self.total += 1
+
+        self.tracks = new_tracks
+        return self.tracks
 
 
 # -----------------------------------------------------------------------------

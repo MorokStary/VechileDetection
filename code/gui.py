@@ -18,6 +18,8 @@ from .main import (
     add_heat,
     apply_threshold,
     draw_labeled_bboxes,
+    get_labeled_bboxes,
+    VehicleTracker,
     HEAT_THRESHOLD,
     HISTORY_LEN,
     DECISION_THRESHOLD,
@@ -60,6 +62,7 @@ def process_video(
     total_frames = int(clip.fps * clip.duration)
 
     history = deque(maxlen=HISTORY_LEN)
+    tracker = VehicleTracker()
     metrics = {
         "processed": 0,
         "total_frames": total_frames,
@@ -79,10 +82,12 @@ def process_video(
             add_heat(heat, b)
         apply_threshold(heat, HEAT_THRESHOLD)
         labels = label(heat)
+        labeled_boxes = get_labeled_bboxes(labels)
+        tracker.update(labeled_boxes)
 
         metrics["processed"] += 1
-        metrics["cars_in_frame"] = labels[1]
-        metrics["total_cars"] += labels[1]
+        metrics["cars_in_frame"] = len(labeled_boxes)
+        metrics["total_cars"] = tracker.total
         metrics["elapsed"] = time.time() - start_time
         if status_callback:
             status_callback(metrics)

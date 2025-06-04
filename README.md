@@ -73,3 +73,6 @@ number and how many vehicles are detected.
 * If you experience missing dependencies, ensure all required Python
   packages are installed. Running `python3 code/main.py -h` should show the
   command line options without errors.
+* The GUI counts unique vehicles using a simple tracker so the "Total cars"
+  metric reflects how many different cars appeared rather than detections per
+  frame.
