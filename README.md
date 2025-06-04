@@ -60,7 +60,8 @@ python3 -m code.gui
 
 The GUI lets you choose an input video, specify an output path and optional
 retraining of the SVM. A **Preview** button allows watching the selected source
-video directly inside the window. After processing finishes a **View** button
+video directly inside the window. Two checkboxes let you overlay bounding boxes
+and the heatmap during preview. After processing finishes a **View** button
 becomes active so you can immediately watch the generated output. The controls
 have been styled with softer colors, a bold title and a green accent for action
 buttons. The progress bar uses a blue accent for easier tracking. During

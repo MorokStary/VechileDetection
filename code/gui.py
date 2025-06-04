@@ -131,12 +131,20 @@ class Application(tk.Tk):
         self.windows_var = tk.StringVar(
             value=";".join(f"{a},{b},{c}" for a, b, c in WINDOW_SIZES)
         )
+        self.show_boxes_var = tk.BooleanVar()
+        self.show_heat_var = tk.BooleanVar()
+
+        self.svc = None
+        self.scaler = None
+        self.show_boxes = False
+        self.show_heat = False
 
         self._build_widgets()
         self.cap = None
         self.preview_running = False
         self.output_view = False
         self.image_on_canvas = None
+        self.preview_history = None
 
     def _build_widgets(self):
         style = ttk.Style(self)
@@ -182,6 +190,8 @@ class Application(tk.Tk):
         self.view_btn.grid(row=1, column=3)
 
         ttk.Checkbutton(frm, text="Retrain model", variable=self.train_var).grid(row=2, column=1, sticky="w")
+        ttk.Checkbutton(frm, text="Show boxes", variable=self.show_boxes_var).grid(row=2, column=2, sticky="w")
+        ttk.Checkbutton(frm, text="Show heatmap", variable=self.show_heat_var).grid(row=2, column=3, sticky="w")
 
         ttk.Label(frm, text="Heat threshold:").grid(row=3, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.heat_var, width=10).grid(row=3, column=1, sticky="w")
@@ -211,6 +221,11 @@ class Application(tk.Tk):
 
         self.canvas = tk.Canvas(frm, width=320, height=240, bg="black")
         self.canvas.grid(row=12, column=0, columnspan=4, pady=10)
+
+    def _get_model(self):
+        if self.svc is None or self.scaler is None:
+            self.svc, self.scaler = train_or_load_svm(force_train=False)
+        return self.svc, self.scaler
 
     def _choose_input(self):
         path = filedialog.askopenfilename(title="Choose input video")
@@ -248,6 +263,29 @@ class Application(tk.Tk):
                 self.output_view = False
             return
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        if self.show_boxes or self.show_heat:
+            svc, scaler = self._get_model()
+            boxes = find_cars(frame, svc, scaler)
+            if self.preview_history is not None:
+                self.preview_history.append(boxes)
+            heat = np.zeros_like(frame[:, :, 0]).astype(np.float32)
+            if self.preview_history is not None:
+                for b in self.preview_history:
+                    add_heat(heat, b)
+            apply_threshold(heat, self.heat_var.get())
+            labels = label(heat)
+            if self.show_boxes:
+                frame = draw_labeled_bboxes(frame, labels)
+            if self.show_heat:
+                if np.max(heat) > 0:
+                    norm = np.clip(heat / np.max(heat) * 255, 0, 255).astype(np.uint8)
+                else:
+                    norm = heat.astype(np.uint8)
+                cmap = cv2.applyColorMap(norm, cv2.COLORMAP_HOT)
+                cmap = cv2.cvtColor(cmap, cv2.COLOR_BGR2RGB)
+                frame = cv2.addWeighted(frame, 0.7, cmap, 0.3, 0)
+
         img = Image.fromarray(frame)
         img = img.resize((320, 240))
         self.image_on_canvas = ImageTk.PhotoImage(img)
@@ -265,6 +303,12 @@ class Application(tk.Tk):
         self.output_view = output
         if output:
             self.view_btn.config(state="disabled")
+        self.show_boxes = self.show_boxes_var.get()
+        self.show_heat = self.show_heat_var.get()
+        if self.show_boxes or self.show_heat:
+            self.preview_history = deque(maxlen=self.history_var.get())
+        else:
+            self.preview_history = None
         self.preview_running = True
         self._show_frame()
 
