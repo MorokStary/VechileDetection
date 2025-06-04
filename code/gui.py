@@ -18,11 +18,41 @@ from .main import (
     draw_labeled_bboxes,
     HEAT_THRESHOLD,
     HISTORY_LEN,
+    DECISION_THRESHOLD,
+    CELLS_PER_STEP,
+    WINDOW_SIZES,
 )
 
 
-def process_video(input_path, output_path, force_train=False, status_callback=None):
+def process_video(
+    input_path,
+    output_path,
+    force_train=False,
+    status_callback=None,
+    heat_threshold=HEAT_THRESHOLD,
+    history_len=HISTORY_LEN,
+    decision_threshold=DECISION_THRESHOLD,
+    cells_per_step=CELLS_PER_STEP,
+    window_sizes=None,
+):
     """Process a video and optionally report progress via a callback."""
+
+    # Override module level parameters temporarily
+    global HEAT_THRESHOLD, HISTORY_LEN, DECISION_THRESHOLD, CELLS_PER_STEP, WINDOW_SIZES
+    old_vals = (
+        HEAT_THRESHOLD,
+        HISTORY_LEN,
+        DECISION_THRESHOLD,
+        CELLS_PER_STEP,
+        WINDOW_SIZES,
+    )
+    HEAT_THRESHOLD = heat_threshold
+    HISTORY_LEN = history_len
+    DECISION_THRESHOLD = decision_threshold
+    CELLS_PER_STEP = cells_per_step
+    if window_sizes is not None:
+        WINDOW_SIZES = window_sizes
+
     svc, scaler = train_or_load_svm(force_train=force_train)
     clip = VideoFileClip(input_path)
     total_frames = int(clip.fps * clip.duration)
@@ -60,6 +90,15 @@ def process_video(input_path, output_path, force_train=False, status_callback=No
     result = clip.fl_image(processor)
     result.write_videofile(output_path, audio=False, threads=4)
 
+    # restore original parameters
+    (
+        HEAT_THRESHOLD,
+        HISTORY_LEN,
+        DECISION_THRESHOLD,
+        CELLS_PER_STEP,
+        WINDOW_SIZES,
+    ) = old_vals
+
 
 def _run_in_thread(func):
     t = threading.Thread(target=func, daemon=True)
@@ -72,12 +111,19 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Vehicle Detection GUI")
-        self.geometry("600x300")
+        self.geometry("650x400")
 
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.train_var = tk.BooleanVar()
         self.status_var = tk.StringVar(value="Idle")
+        self.heat_var = tk.IntVar(value=HEAT_THRESHOLD)
+        self.history_var = tk.IntVar(value=HISTORY_LEN)
+        self.decision_var = tk.DoubleVar(value=DECISION_THRESHOLD)
+        self.step_var = tk.IntVar(value=CELLS_PER_STEP)
+        self.windows_var = tk.StringVar(
+            value=";".join(f"{a},{b},{c}" for a, b, c in WINDOW_SIZES)
+        )
 
         self._build_widgets()
 
@@ -95,16 +141,31 @@ class Application(tk.Tk):
 
         ttk.Checkbutton(frm, text="Retrain model", variable=self.train_var).grid(row=2, column=1, sticky="w")
 
+        ttk.Label(frm, text="Heat threshold:").grid(row=3, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.heat_var, width=10).grid(row=3, column=1, sticky="w")
+
+        ttk.Label(frm, text="History len:").grid(row=4, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.history_var, width=10).grid(row=4, column=1, sticky="w")
+
+        ttk.Label(frm, text="Decision thr:").grid(row=5, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.decision_var, width=10).grid(row=5, column=1, sticky="w")
+
+        ttk.Label(frm, text="Cells/step:").grid(row=6, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.step_var, width=10).grid(row=6, column=1, sticky="w")
+
+        ttk.Label(frm, text="Windows:").grid(row=7, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.windows_var, width=40).grid(row=7, column=1, sticky="we")
+
         self.start_btn = ttk.Button(frm, text="Start", command=self._start)
-        self.start_btn.grid(row=3, column=1, pady=10)
+        self.start_btn.grid(row=8, column=1, pady=10)
 
         self.progress = ttk.Progressbar(frm, length=400)
-        self.progress.grid(row=4, column=0, columnspan=3, pady=10)
+        self.progress.grid(row=9, column=0, columnspan=3, pady=10)
 
         self.metrics_label = ttk.Label(frm, text="")
-        self.metrics_label.grid(row=5, column=0, columnspan=3, sticky="w")
+        self.metrics_label.grid(row=10, column=0, columnspan=3, sticky="w")
 
-        ttk.Label(frm, textvariable=self.status_var).grid(row=6, column=0, columnspan=3, sticky="w")
+        ttk.Label(frm, textvariable=self.status_var).grid(row=11, column=0, columnspan=3, sticky="w")
 
     def _choose_input(self):
         path = filedialog.askopenfilename(title="Choose input video")
@@ -122,13 +183,30 @@ class Application(tk.Tk):
         if not input_path or not output_path:
             messagebox.showwarning("Missing info", "Please specify input and output paths")
             return
+        try:
+            windows = [
+                tuple(map(float, w.split(',')))
+                for w in self.windows_var.get().split(';')
+                if w.strip()
+            ]
+            windows = [(int(a), int(b), float(c)) for a, b, c in windows]
+        except Exception as e:
+            messagebox.showerror("Invalid windows", f"Could not parse windows: {e}")
+            return
+        params = {
+            "heat_threshold": self.heat_var.get(),
+            "history_len": self.history_var.get(),
+            "decision_threshold": self.decision_var.get(),
+            "cells_per_step": self.step_var.get(),
+            "window_sizes": windows,
+        }
         self.start_btn.config(state="disabled")
         self.status_var.set("Processing...")
         self.progress.config(value=0)
         self.metrics_label.config(text="")
-        _run_in_thread(lambda: self._process(input_path, output_path, self.train_var.get()))
+        _run_in_thread(lambda: self._process(input_path, output_path, self.train_var.get(), params))
 
-    def _process(self, input_path, output_path, retrain):
+    def _process(self, input_path, output_path, retrain, params):
         def update(metrics):
             progress = metrics["processed"] / metrics["total_frames"] * 100
             msg = (
@@ -140,7 +218,13 @@ class Application(tk.Tk):
             self.progress.after(0, lambda: self.progress.config(value=progress))
             self.metrics_label.after(0, lambda: self.metrics_label.config(text=msg))
 
-        process_video(input_path, output_path, force_train=retrain, status_callback=update)
+        process_video(
+            input_path,
+            output_path,
+            force_train=retrain,
+            status_callback=update,
+            **params,
+        )
         self.after(0, self._done)
 
     def _done(self):

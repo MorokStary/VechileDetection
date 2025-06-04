@@ -29,11 +29,11 @@ WINDOW_SIZES = [
     (400, 528, 2.0),
 ]
 # How many HOG cells to step per window
-CELLS_PER_STEP    = 2
+CELLS_PER_STEP = 2
 # Heatmap threshold: any pixel ≤ this will be zeroed
-HEAT_THRESHOLD    = 5
+HEAT_THRESHOLD = 5
 # How many past frames to accumulate heat over
-HISTORY_LEN       = 5
+HISTORY_LEN = 5
 # SVM decision_function margin threshold
 DECISION_THRESHOLD = 0.5
 
@@ -245,13 +245,45 @@ def make_frame_processor(svc, scaler):
 # -----------------------------------------------------------------------------
 # Main entrypoint
 # -----------------------------------------------------------------------------
+def _parse_windows(values):
+    windows = []
+    for v in values or []:
+        try:
+            parts = [float(x) for x in v.split(',')]
+            if len(parts) != 3:
+                raise ValueError
+            windows.append((int(parts[0]), int(parts[1]), float(parts[2])))
+        except Exception:
+            raise argparse.ArgumentTypeError(
+                f"Invalid window specification '{v}', expected ystart,ystop,scale")
+    return windows
+
+
 def main():
+    global HEAT_THRESHOLD, HISTORY_LEN, DECISION_THRESHOLD, CELLS_PER_STEP, WINDOW_SIZES
     p = argparse.ArgumentParser(description="Vehicle detection with HOG+SVM")
     p.add_argument("--input",  "-i", required=True, help="Path to input video")
     p.add_argument("--output", "-o", required=True, help="Path to output video")
     p.add_argument("--train",  "-t", action="store_true",
                    help="Force retrain the SVM (ignores cached model)")
+    p.add_argument("--heat-threshold", type=int, default=HEAT_THRESHOLD,
+                   help="Heatmap threshold (default %(default)s)")
+    p.add_argument("--history-len", type=int, default=HISTORY_LEN,
+                   help="Frames of heatmap history (default %(default)s)")
+    p.add_argument("--decision-threshold", type=float, default=DECISION_THRESHOLD,
+                   help="SVM decision threshold (default %(default)s)")
+    p.add_argument("--cells-per-step", type=int, default=CELLS_PER_STEP,
+                   help="HOG cells to step per window (default %(default)s)")
+    p.add_argument("--window", action="append",
+                   help="Search window as 'ystart,ystop,scale'. Can be repeated")
+
     args = p.parse_args()
+    HEAT_THRESHOLD = args.heat_threshold
+    HISTORY_LEN = args.history_len
+    DECISION_THRESHOLD = args.decision_threshold
+    CELLS_PER_STEP = args.cells_per_step
+    if args.window:
+        WINDOW_SIZES = _parse_windows(args.window)
 
     svc, scaler = train_or_load_svm(force_train=args.train)
     processor = make_frame_processor(svc, scaler)

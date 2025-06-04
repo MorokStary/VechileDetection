@@ -41,7 +41,14 @@ python3 code/main.py --input input_video.mp4 --output detected_output.mp4
 
 The script reads the input video, detects vehicles frame by frame, draws
 bounding boxes around detected cars, and writes the resulting video to the
-path specified by `--output`.
+path specified by `--output`. Additional options allow tweaking the detection
+parameters, for example:
+
+```bash
+python3 code/main.py -i input.mp4 -o out.mp4 --heat-threshold 3 \
+    --history-len 8 --decision-threshold 0.2 \
+    --window 400,500,1.0 --window 400,550,1.5
+```
 
 ## Tkinter GUI
 
@@ -58,7 +65,8 @@ as the current frame number and how many vehicles are detected.
 ## Notes
 
 * Detection parameters such as the sliding window sizes and heatmap
-  thresholds can be adjusted at the top of `code/main.py`.
+  thresholds can now be changed via command line options or directly in the
+  GUI fields.
 * If you experience missing dependencies, ensure all required Python
   packages are installed. Running `python3 code/main.py -h` should show the
   command line options without errors.
