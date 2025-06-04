@@ -135,6 +135,7 @@ class Application(tk.Tk):
         self._build_widgets()
         self.cap = None
         self.preview_running = False
+        self.output_view = False
         self.image_on_canvas = None
 
     def _build_widgets(self):
@@ -146,6 +147,7 @@ class Application(tk.Tk):
         self.configure(bg="#f0f4ff")
         style.configure("TFrame", background="#f0f4ff")
         style.configure("TLabel", background="#f0f4ff", padding=4, foreground="#333")
+        style.configure("Header.TLabel", font=("Helvetica", 16, "bold"), background="#f0f4ff", foreground="#222", padding=6)
         style.configure("TCheckbutton", background="#f0f4ff")
         style.configure("TButton", padding=6)
         style.configure("Accent.TButton", background="#4caf50", foreground="white", padding=6)
@@ -161,6 +163,9 @@ class Application(tk.Tk):
             thickness=15,
         )
 
+        header = ttk.Label(self, text="Vehicle Detection", style="Header.TLabel")
+        header.pack(pady=(10, 0))
+
         frm = ttk.Frame(self)
         frm.pack(fill="both", expand=True, padx=10, pady=10)
         frm.columnconfigure(1, weight=1)
@@ -173,6 +178,8 @@ class Application(tk.Tk):
         ttk.Label(frm, text="Output Video:").grid(row=1, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.output_var, width=40).grid(row=1, column=1, sticky="we")
         ttk.Button(frm, text="Browse", command=self._choose_output).grid(row=1, column=2)
+        self.view_btn = ttk.Button(frm, text="View", command=self._view_output, state="disabled")
+        self.view_btn.grid(row=1, column=3)
 
         ttk.Checkbutton(frm, text="Retrain model", variable=self.train_var).grid(row=2, column=1, sticky="w")
 
@@ -211,23 +218,23 @@ class Application(tk.Tk):
             self.input_var.set(path)
 
     def _preview(self):
-        if self.preview_running:
-            return
         path = self.input_var.get()
         if not path:
             messagebox.showwarning("No input", "Please select an input video first")
             return
-        self.cap = cv2.VideoCapture(path)
-        if not self.cap.isOpened():
-            messagebox.showerror("Error", "Failed to open video")
-            return
-        self.preview_running = True
-        self._show_frame()
+        self._play_video(path)
 
     def _choose_output(self):
         path = filedialog.asksaveasfilename(title="Choose output video", defaultextension=".mp4")
         if path:
             self.output_var.set(path)
+
+    def _view_output(self):
+        path = self.output_var.get()
+        if not path:
+            messagebox.showwarning("No output", "Please specify an output video first")
+            return
+        self._play_video(path, output=True)
 
     def _show_frame(self):
         if not self.preview_running or self.cap is None:
@@ -236,6 +243,9 @@ class Application(tk.Tk):
         if not ret:
             self.cap.release()
             self.preview_running = False
+            if self.output_view:
+                self.view_btn.after(0, lambda: self.view_btn.config(state="normal"))
+                self.output_view = False
             return
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame)
@@ -244,6 +254,19 @@ class Application(tk.Tk):
         self.canvas.create_image(0, 0, image=self.image_on_canvas, anchor="nw")
         delay = int(1000 / (self.cap.get(cv2.CAP_PROP_FPS) or 24))
         self.after(delay, self._show_frame)
+
+    def _play_video(self, path, output=False):
+        if self.preview_running:
+            return
+        self.cap = cv2.VideoCapture(path)
+        if not self.cap.isOpened():
+            messagebox.showerror("Error", "Failed to open video")
+            return
+        self.output_view = output
+        if output:
+            self.view_btn.config(state="disabled")
+        self.preview_running = True
+        self._show_frame()
 
     def _start(self):
         input_path = self.input_var.get()
@@ -273,6 +296,7 @@ class Application(tk.Tk):
             "window_sizes": windows,
         }
         self.start_btn.config(state="disabled")
+        self.view_btn.config(state="disabled")
         self.status_var.set("Processing...")
         self.progress.config(value=0)
         self.metrics_label.config(text="")
@@ -302,6 +326,7 @@ class Application(tk.Tk):
     def _done(self):
         self.status_var.set("Done")
         self.start_btn.config(state="normal")
+        self.view_btn.config(state="normal")
 
 
 def main():
