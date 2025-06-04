@@ -52,7 +52,7 @@ MODEL_FILE    = 'svc_model.joblib'
 # -----------------------------------------------------------------------------
 # Feature extraction & model training / loading
 # -----------------------------------------------------------------------------
-def extract_hog_features(img_paths):
+def extract_hog_features(img_paths, flip=False):
     """
     Given a list of image file paths, compute HOG features for each.
     Returns array of shape (n_images, n_features).
@@ -75,6 +75,18 @@ def extract_hog_features(img_paths):
                     feature_vector=True
                 ))
             features.append(np.hstack(hog_feats))
+            if flip:
+                img_flipped = cv2.flip(img, 1)
+                hog_feats = []
+                for ch in range(3):
+                    hog_feats.append(hog(
+                        img_flipped[:, :, ch],
+                        orientations=ORIENT,
+                        pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
+                        cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
+                        feature_vector=True,
+                    ))
+                features.append(np.hstack(hog_feats))
         else:
             ch = int(HOG_CHANNEL)
             features.append(hog(
@@ -84,35 +96,47 @@ def extract_hog_features(img_paths):
                 cells_per_block=(CELL_PER_BLOCK,CELL_PER_BLOCK),
                 feature_vector=True
             ))
+            if flip:
+                img_flipped = cv2.flip(img, 1)
+                features.append(hog(
+                    img_flipped[:, :, ch],
+                    orientations=ORIENT,
+                    pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
+                    cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
+                    feature_vector=True,
+                ))
     return np.array(features)
 
 
-def train_or_load_svm(force_train=False):
+def train_or_load_svm(force_train=False, augment_flip=False):
     """
     Train a LinearSVC on cached HOG features (or raw images if cache missing),
     or load from disk if available and not forcing retrain.
     Returns (svc, scaler).
     """
-    if (not force_train) and os.path.isfile(MODEL_FILE):
-        svc, scaler = load(MODEL_FILE)
-        print(f"[INFO] Loaded SVM model and scaler from '{MODEL_FILE}'")
+    model_file = MODEL_FILE if not augment_flip else 'svc_model_flip.joblib'
+    features_file = FEATURES_FILE if not augment_flip else 'hog_features_flip.npz'
+
+    if (not force_train) and os.path.isfile(model_file):
+        svc, scaler = load(model_file)
+        print(f"[INFO] Loaded SVM model and scaler from '{model_file}'")
         return svc, scaler
 
     # Need to train
     # 1) Load or compute HOG features for cars and non-cars
-    if os.path.isfile(FEATURES_FILE) and (not force_train):
-        data = np.load(FEATURES_FILE)
+    if os.path.isfile(features_file) and (not force_train):
+        data = np.load(features_file)
         X_car   = data['car']
         X_nocar = data['nocar']
-        print(f"[INFO] Loaded cached HOG features from '{FEATURES_FILE}'")
+        print(f"[INFO] Loaded cached HOG features from '{features_file}'")
     else:
         car_images   = glob.glob('./vehicles/**/*.png',   recursive=True)
         nocar_images = glob.glob('./non-vehicles/**/*.png', recursive=True)
         print(f"[INFO] Extracting HOG features from {len(car_images)} cars and {len(nocar_images)} non-cars...")
-        X_car   = extract_hog_features(car_images)
-        X_nocar = extract_hog_features(nocar_images)
-        np.savez(FEATURES_FILE, car=X_car, nocar=X_nocar)
-        print(f"[INFO] Saved HOG features to '{FEATURES_FILE}'")
+        X_car   = extract_hog_features(car_images, flip=augment_flip)
+        X_nocar = extract_hog_features(nocar_images, flip=augment_flip)
+        np.savez(features_file, car=X_car, nocar=X_nocar)
+        print(f"[INFO] Saved HOG features to '{features_file}'")
 
     # 2) Stack and label
     X = np.vstack((X_car, X_nocar)).astype(np.float64)
@@ -125,8 +149,8 @@ def train_or_load_svm(force_train=False):
     # 4) Train Linear SVM
     svc = LinearSVC(max_iter=5000)
     svc.fit(X_scaled, y)
-    dump((svc, scaler), MODEL_FILE)
-    print(f"[INFO] Trained LinearSVC and saved to '{MODEL_FILE}'")
+    dump((svc, scaler), model_file)
+    print(f"[INFO] Trained LinearSVC and saved to '{model_file}'")
 
     return svc, scaler
 
@@ -333,6 +357,8 @@ def main():
     p.add_argument("--output", "-o", required=True, help="Path to output video")
     p.add_argument("--train",  "-t", action="store_true",
                    help="Force retrain the SVM (ignores cached model)")
+    p.add_argument("--augment-flip", action="store_true",
+                   help="Augment training data by horizontal flipping")
     p.add_argument("--heat-threshold", type=int, default=HEAT_THRESHOLD,
                    help="Heatmap threshold (default %(default)s)")
     p.add_argument("--history-len", type=int, default=HISTORY_LEN,
@@ -352,7 +378,8 @@ def main():
     if args.window:
         WINDOW_SIZES = _parse_windows(args.window)
 
-    svc, scaler = train_or_load_svm(force_train=args.train)
+    svc, scaler = train_or_load_svm(force_train=args.train,
+                                    augment_flip=args.augment_flip)
     processor = make_frame_processor(svc, scaler)
 
     clip = VideoFileClip(args.input)

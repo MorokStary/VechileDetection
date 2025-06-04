@@ -33,6 +33,7 @@ def process_video(
     output_path,
     force_train=False,
     status_callback=None,
+    augment_flip=False,
     heat_threshold=HEAT_THRESHOLD,
     history_len=HISTORY_LEN,
     decision_threshold=DECISION_THRESHOLD,
@@ -57,7 +58,8 @@ def process_video(
     if window_sizes is not None:
         WINDOW_SIZES = window_sizes
 
-    svc, scaler = train_or_load_svm(force_train=force_train)
+    svc, scaler = train_or_load_svm(force_train=force_train,
+                                    augment_flip=augment_flip)
     clip = VideoFileClip(input_path)
     total_frames = int(clip.fps * clip.duration)
 
@@ -123,6 +125,7 @@ class Application(tk.Tk):
         self.input_var = tk.StringVar()
         self.output_var = tk.StringVar()
         self.train_var = tk.BooleanVar()
+        self.flip_var = tk.BooleanVar()
         self.status_var = tk.StringVar(value="Idle")
         self.heat_var = tk.IntVar(value=HEAT_THRESHOLD)
         self.history_var = tk.IntVar(value=HISTORY_LEN)
@@ -189,6 +192,7 @@ class Application(tk.Tk):
         self.view_btn = ttk.Button(frm, text="View", command=self._view_output, state="disabled")
         self.view_btn.grid(row=1, column=3)
 
+        ttk.Checkbutton(frm, text="Flip augment", variable=self.flip_var).grid(row=2, column=0, sticky="w")
         ttk.Checkbutton(frm, text="Retrain model", variable=self.train_var).grid(row=2, column=1, sticky="w")
         ttk.Checkbutton(frm, text="Show boxes", variable=self.show_boxes_var).grid(row=2, column=2, sticky="w")
         ttk.Checkbutton(frm, text="Show heatmap", variable=self.show_heat_var).grid(row=2, column=3, sticky="w")
@@ -224,7 +228,10 @@ class Application(tk.Tk):
 
     def _get_model(self):
         if self.svc is None or self.scaler is None:
-            self.svc, self.scaler = train_or_load_svm(force_train=False)
+            self.svc, self.scaler = train_or_load_svm(
+                force_train=False,
+                augment_flip=self.flip_var.get(),
+            )
         return self.svc, self.scaler
 
     def _choose_input(self):
@@ -338,6 +345,7 @@ class Application(tk.Tk):
             "decision_threshold": self.decision_var.get(),
             "cells_per_step": self.step_var.get(),
             "window_sizes": windows,
+            "augment_flip": self.flip_var.get(),
         }
         self.start_btn.config(state="disabled")
         self.view_btn.config(state="disabled")

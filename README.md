@@ -30,6 +30,9 @@ During training, HOG features will be computed and cached in
 `hog_features.npz`, and the trained model with its scaler will be saved to
 `svc_model.joblib`. On subsequent runs without `--train`, these cached files
 are loaded automatically so training does not have to be repeated.
+You can optionally augment the training data by horizontally flipping all
+images using `--augment-flip`. When enabled, the cached files are stored as
+`hog_features_flip.npz` and `svc_model_flip.joblib`.
 
 ## Running Vehicle Detection
 
@@ -59,7 +62,8 @@ python3 -m code.gui
 ```
 
 The GUI lets you choose an input video, specify an output path and optional
-retraining of the SVM. A **Preview** button allows watching the selected source
+retraining of the SVM. You can also enable *Flip augment* to train a model on
+horizontally flipped images. A **Preview** button allows watching the selected source
 video directly inside the window. Two checkboxes let you overlay bounding boxes
 and the heatmap during preview. After processing finishes a **View** button
 becomes active so you can immediately watch the generated output. The controls
