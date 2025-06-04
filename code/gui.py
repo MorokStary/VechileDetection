@@ -5,6 +5,8 @@ import time
 from collections import deque
 import numpy as np
 from scipy.ndimage import label
+import cv2
+from PIL import Image, ImageTk
 try:
     from moviepy.editor import VideoFileClip
 except ImportError:  # moviepy>=2.0 moved VideoFileClip to root
@@ -126,14 +128,42 @@ class Application(tk.Tk):
         )
 
         self._build_widgets()
+        self.cap = None
+        self.preview_running = False
+        self.image_on_canvas = None
 
     def _build_widgets(self):
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        self.configure(bg="#f0f4ff")
+        style.configure("TFrame", background="#f0f4ff")
+        style.configure("TLabel", background="#f0f4ff", padding=4, foreground="#333")
+        style.configure("TCheckbutton", background="#f0f4ff")
+        style.configure("TButton", padding=6)
+        style.configure("Accent.TButton", background="#4caf50", foreground="white", padding=6)
+        style.map(
+            "Accent.TButton",
+            background=[("active", "#45a049")],
+            foreground=[("disabled", "#ddd")],
+        )
+        style.configure(
+            "blue.Horizontal.TProgressbar",
+            troughcolor="#d0d0d0",
+            background="#3b82f6",
+            thickness=15,
+        )
+
         frm = ttk.Frame(self)
         frm.pack(fill="both", expand=True, padx=10, pady=10)
+        frm.columnconfigure(1, weight=1)
 
         ttk.Label(frm, text="Input Video:").grid(row=0, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.input_var, width=40).grid(row=0, column=1, sticky="we")
         ttk.Button(frm, text="Browse", command=self._choose_input).grid(row=0, column=2)
+        ttk.Button(frm, text="Preview", command=self._preview).grid(row=0, column=3)
 
         ttk.Label(frm, text="Output Video:").grid(row=1, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.output_var, width=40).grid(row=1, column=1, sticky="we")
@@ -156,30 +186,67 @@ class Application(tk.Tk):
         ttk.Label(frm, text="Windows:").grid(row=7, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.windows_var, width=40).grid(row=7, column=1, sticky="we")
 
-        self.start_btn = ttk.Button(frm, text="Start", command=self._start)
-        self.start_btn.grid(row=8, column=1, pady=10)
+        self.start_btn = ttk.Button(frm, text="Start", command=self._start, style="Accent.TButton")
+        self.start_btn.grid(row=8, column=3, pady=10, sticky="e")
 
-        self.progress = ttk.Progressbar(frm, length=400)
-        self.progress.grid(row=9, column=0, columnspan=3, pady=10)
+        self.progress = ttk.Progressbar(frm, length=400, style="blue.Horizontal.TProgressbar")
+        self.progress.grid(row=9, column=0, columnspan=4, pady=10)
 
         self.metrics_label = ttk.Label(frm, text="")
-        self.metrics_label.grid(row=10, column=0, columnspan=3, sticky="w")
+        self.metrics_label.grid(row=10, column=0, columnspan=4, sticky="w")
 
-        ttk.Label(frm, textvariable=self.status_var).grid(row=11, column=0, columnspan=3, sticky="w")
+        ttk.Label(frm, textvariable=self.status_var).grid(row=11, column=0, columnspan=4, sticky="w")
+
+        self.canvas = tk.Canvas(frm, width=320, height=240, bg="black")
+        self.canvas.grid(row=12, column=0, columnspan=4, pady=10)
 
     def _choose_input(self):
         path = filedialog.askopenfilename(title="Choose input video")
         if path:
             self.input_var.set(path)
 
+    def _preview(self):
+        if self.preview_running:
+            return
+        path = self.input_var.get()
+        if not path:
+            messagebox.showwarning("No input", "Please select an input video first")
+            return
+        self.cap = cv2.VideoCapture(path)
+        if not self.cap.isOpened():
+            messagebox.showerror("Error", "Failed to open video")
+            return
+        self.preview_running = True
+        self._show_frame()
+
     def _choose_output(self):
         path = filedialog.asksaveasfilename(title="Choose output video", defaultextension=".mp4")
         if path:
             self.output_var.set(path)
 
+    def _show_frame(self):
+        if not self.preview_running or self.cap is None:
+            return
+        ret, frame = self.cap.read()
+        if not ret:
+            self.cap.release()
+            self.preview_running = False
+            return
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img = Image.fromarray(frame)
+        img = img.resize((320, 240))
+        self.image_on_canvas = ImageTk.PhotoImage(img)
+        self.canvas.create_image(0, 0, image=self.image_on_canvas, anchor="nw")
+        delay = int(1000 / (self.cap.get(cv2.CAP_PROP_FPS) or 24))
+        self.after(delay, self._show_frame)
+
     def _start(self):
         input_path = self.input_var.get()
         output_path = self.output_var.get()
+        if self.preview_running:
+            self.preview_running = False
+            if self.cap is not None:
+                self.cap.release()
         if not input_path or not output_path:
             messagebox.showwarning("Missing info", "Please specify input and output paths")
             return

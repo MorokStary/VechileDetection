@@ -10,7 +10,7 @@ The script requires Python 3.11 and several Python packages. Install them
 with:
 
 ```bash
-pip install opencv-python-headless scikit-image scikit-learn joblib moviepy
+pip install opencv-python-headless scikit-image scikit-learn joblib moviepy pillow
 ```
 
 (The commands above work for recent versions of `pip`.)
@@ -59,8 +59,11 @@ python3 -m code.gui
 ```
 
 The GUI lets you choose an input video, specify an output path and optional
-retraining of the SVM. During processing it displays progress information such
-as the current frame number and how many vehicles are detected.
+retraining of the SVM. A **Preview** button allows watching the selected source
+video directly inside the window. The controls have been styled with softer
+colors and the progress bar uses a blue accent for easier tracking. During
+processing the interface displays progress information such as the current frame
+number and how many vehicles are detected.
 
 ## Notes
 
