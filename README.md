@@ -60,8 +60,10 @@ python3 -m code.gui
 
 The GUI lets you choose an input video, specify an output path and optional
 retraining of the SVM. A **Preview** button allows watching the selected source
-video directly inside the window. The controls have been styled with softer
-colors and the progress bar uses a blue accent for easier tracking. During
+video directly inside the window. After processing finishes a **View** button
+becomes active so you can immediately watch the generated output. The controls
+have been styled with softer colors, a bold title and a green accent for action
+buttons. The progress bar uses a blue accent for easier tracking. During
 processing the interface displays progress information such as the current frame
 number and how many vehicles are detected.
 
