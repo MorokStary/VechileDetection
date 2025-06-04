@@ -83,3 +83,6 @@ number and how many vehicles are detected.
 * The GUI counts unique vehicles using a simple tracker so the "Total cars"
   metric reflects how many different cars appeared rather than detections per
   frame.
+* You can adjust how long a detection must persist to be counted and how long a
+  car may be missing before starting a new track via the **Confirm time** and
+  **Lost time** fields in the GUI.

@@ -259,9 +259,30 @@ def draw_labeled_bboxes(img, labels):
 class VehicleTracker:
     """Track vehicles across frames to count unique cars."""
 
-    def __init__(self, max_lost: int = 3, iou_threshold: float = 0.3):
-        self.max_lost = max_lost
+    def __init__(
+        self,
+        fps: float,
+        confirm_time: float = 0.0,
+        lost_time: float = 1.0,
+        iou_threshold: float = 0.3,
+    ):
+        """Create a tracker.
+
+        Parameters
+        ----------
+        fps : float
+            Frame rate of the processed video.
+        confirm_time : float, optional
+            Seconds a detection must persist before being counted.
+        lost_time : float, optional
+            Seconds a car may disappear before starting a new track.
+        iou_threshold : float, optional
+            Minimum IoU for matching boxes between frames.
+        """
+
         self.iou_threshold = iou_threshold
+        self.confirm_frames = max(1, int(round(confirm_time * fps)))
+        self.max_lost = int(round(lost_time * fps))
         self.tracks: List[dict] = []
         self.total = 0
 
@@ -282,6 +303,14 @@ class VehicleTracker:
         return inter / float(areaA + areaB - inter)
 
     def update(self, boxes: List[Tuple[Tuple[int, int], Tuple[int, int]]]):
+        """Update tracker with detected boxes.
+
+        Parameters
+        ----------
+        boxes : list of tuple
+            Detected bounding boxes for the current frame.
+        """
+
         matched = [False] * len(boxes)
         new_tracks = []
 
@@ -298,6 +327,10 @@ class VehicleTracker:
             if best_iou >= self.iou_threshold:
                 track['box'] = boxes[best_idx]
                 track['lost'] = 0
+                track['hits'] += 1
+                if not track['confirmed'] and track['hits'] >= self.confirm_frames:
+                    track['confirmed'] = True
+                    self.total += 1
                 matched[best_idx] = True
                 new_tracks.append(track)
             else:
@@ -307,8 +340,11 @@ class VehicleTracker:
 
         for i, box in enumerate(boxes):
             if not matched[i]:
-                new_tracks.append({'box': box, 'lost': 0})
-                self.total += 1
+                confirmed = self.confirm_frames <= 1
+                new_tracks.append({'box': box, 'lost': 0, 'hits': 1,
+                                   'confirmed': confirmed})
+                if confirmed:
+                    self.total += 1
 
         self.tracks = new_tracks
         return self.tracks
