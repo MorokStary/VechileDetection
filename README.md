@@ -27,12 +27,15 @@ python3 code/main.py --input <video file> --output <output video> --train
 ```
 
 During training, HOG features will be computed and cached in
-`hog_features.npz`, and the trained model with its scaler will be saved to
+`hog_features.npz` (compressed) using 32‑bit floats to keep memory usage
+reasonable. The trained model with its scaler will be saved to
 `svc_model.joblib`. On subsequent runs without `--train`, these cached files
 are loaded automatically so training does not have to be repeated.
 You can optionally augment the training data by horizontally flipping all
 images using `--augment-flip`. When enabled, the cached files are stored as
 `hog_features_flip.npz` and `svc_model_flip.joblib`.
+
+Feature extraction runs in parallel and will use all available CPU cores.
 
 ## Running Vehicle Detection
 
