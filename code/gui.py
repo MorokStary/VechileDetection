@@ -39,6 +39,8 @@ def process_video(
     decision_threshold=DECISION_THRESHOLD,
     cells_per_step=CELLS_PER_STEP,
     window_sizes=None,
+    confirm_time=0.0,
+    lost_time=1.0,
 ):
     """Process a video and optionally report progress via a callback."""
 
@@ -64,7 +66,11 @@ def process_video(
     total_frames = int(clip.fps * clip.duration)
 
     history = deque(maxlen=HISTORY_LEN)
-    tracker = VehicleTracker()
+    tracker = VehicleTracker(
+        fps=clip.fps,
+        confirm_time=confirm_time,
+        lost_time=lost_time,
+    )
     metrics = {
         "processed": 0,
         "total_frames": total_frames,
@@ -134,6 +140,8 @@ class Application(tk.Tk):
         self.windows_var = tk.StringVar(
             value=";".join(f"{a},{b},{c}" for a, b, c in WINDOW_SIZES)
         )
+        self.confirm_var = tk.DoubleVar(value=0.0)
+        self.lost_var = tk.DoubleVar(value=1.0)
         self.show_boxes_var = tk.BooleanVar()
         self.show_heat_var = tk.BooleanVar()
 
@@ -212,19 +220,25 @@ class Application(tk.Tk):
         ttk.Label(frm, text="Windows:").grid(row=7, column=0, sticky="e")
         ttk.Entry(frm, textvariable=self.windows_var, width=40).grid(row=7, column=1, sticky="we")
 
+        ttk.Label(frm, text="Confirm time:").grid(row=8, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.confirm_var, width=10).grid(row=8, column=1, sticky="w")
+
+        ttk.Label(frm, text="Lost time:").grid(row=9, column=0, sticky="e")
+        ttk.Entry(frm, textvariable=self.lost_var, width=10).grid(row=9, column=1, sticky="w")
+
         self.start_btn = ttk.Button(frm, text="Start", command=self._start, style="Accent.TButton")
-        self.start_btn.grid(row=8, column=3, pady=10, sticky="e")
+        self.start_btn.grid(row=10, column=3, pady=10, sticky="e")
 
         self.progress = ttk.Progressbar(frm, length=400, style="blue.Horizontal.TProgressbar")
-        self.progress.grid(row=9, column=0, columnspan=4, pady=10)
+        self.progress.grid(row=11, column=0, columnspan=4, pady=10)
 
         self.metrics_label = ttk.Label(frm, text="")
-        self.metrics_label.grid(row=10, column=0, columnspan=4, sticky="w")
+        self.metrics_label.grid(row=12, column=0, columnspan=4, sticky="w")
 
-        ttk.Label(frm, textvariable=self.status_var).grid(row=11, column=0, columnspan=4, sticky="w")
+        ttk.Label(frm, textvariable=self.status_var).grid(row=13, column=0, columnspan=4, sticky="w")
 
         self.canvas = tk.Canvas(frm, width=320, height=240, bg="black")
-        self.canvas.grid(row=12, column=0, columnspan=4, pady=10)
+        self.canvas.grid(row=14, column=0, columnspan=4, pady=10)
 
     def _get_model(self):
         if self.svc is None or self.scaler is None:
@@ -346,6 +360,8 @@ class Application(tk.Tk):
             "cells_per_step": self.step_var.get(),
             "window_sizes": windows,
             "augment_flip": self.flip_var.get(),
+            "confirm_time": self.confirm_var.get(),
+            "lost_time": self.lost_var.get(),
         }
         self.start_btn.config(state="disabled")
         self.view_btn.config(state="disabled")
