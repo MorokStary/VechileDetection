@@ -52,60 +52,76 @@ MODEL_FILE    = 'svc_model.joblib'
 # -----------------------------------------------------------------------------
 # Feature extraction & model training / loading
 # -----------------------------------------------------------------------------
-def extract_hog_features(img_paths, flip=False):
-    """
-    Given a list of image file paths, compute HOG features for each.
-    Returns array of shape (n_images, n_features).
-    """
-    features = []
-    for fname in img_paths:
-        img = cv2.imread(fname)
-        if img is None:
-            continue
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        # convert to chosen color space (we'll do HOG on R/G/B)
-        if HOG_CHANNEL == 'ALL':
-            hog_feats = []
-            for ch in range(3):
-                hog_feats.append(hog(
-                    img[:,:,ch], 
-                    orientations=ORIENT,
-                    pixels_per_cell=(PIX_PER_CELL,PIX_PER_CELL),
-                    cells_per_block=(CELL_PER_BLOCK,CELL_PER_BLOCK),
-                    feature_vector=True
-                ))
-            features.append(np.hstack(hog_feats))
-            if flip:
-                img_flipped = cv2.flip(img, 1)
-                hog_feats = []
-                for ch in range(3):
-                    hog_feats.append(hog(
-                        img_flipped[:, :, ch],
-                        orientations=ORIENT,
-                        pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
-                        cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
-                        feature_vector=True,
-                    ))
-                features.append(np.hstack(hog_feats))
-        else:
-            ch = int(HOG_CHANNEL)
-            features.append(hog(
-                img[:,:,ch],
+from joblib import Parallel, delayed
+
+
+def _extract_single(fname, flip):
+    img = cv2.imread(fname)
+    if img is None:
+        return []
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    feats = []
+    if HOG_CHANNEL == 'ALL':
+        hog_feats = [
+            hog(
+                img[:, :, ch],
                 orientations=ORIENT,
-                pixels_per_cell=(PIX_PER_CELL,PIX_PER_CELL),
-                cells_per_block=(CELL_PER_BLOCK,CELL_PER_BLOCK),
-                feature_vector=True
-            ))
-            if flip:
-                img_flipped = cv2.flip(img, 1)
-                features.append(hog(
+                pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
+                cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
+                feature_vector=True,
+            )
+            for ch in range(3)
+        ]
+        feats.append(np.hstack(hog_feats))
+        if flip:
+            img_flipped = cv2.flip(img, 1)
+            hog_feats = [
+                hog(
                     img_flipped[:, :, ch],
                     orientations=ORIENT,
                     pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
                     cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
                     feature_vector=True,
-                ))
-    return np.array(features)
+                )
+                for ch in range(3)
+            ]
+            feats.append(np.hstack(hog_feats))
+    else:
+        ch = int(HOG_CHANNEL)
+        feats.append(
+            hog(
+                img[:, :, ch],
+                orientations=ORIENT,
+                pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
+                cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
+                feature_vector=True,
+            )
+        )
+        if flip:
+            img_flipped = cv2.flip(img, 1)
+            feats.append(
+                hog(
+                    img_flipped[:, :, ch],
+                    orientations=ORIENT,
+                    pixels_per_cell=(PIX_PER_CELL, PIX_PER_CELL),
+                    cells_per_block=(CELL_PER_BLOCK, CELL_PER_BLOCK),
+                    feature_vector=True,
+                )
+            )
+    return feats
+
+
+def extract_hog_features(img_paths, flip=False):
+    """
+    Given a list of image file paths, compute HOG features for each.
+    Returns array of shape (n_images, n_features).
+    """
+    feature_lists = Parallel(n_jobs=-1, prefer="threads")(
+        delayed(_extract_single)(fname, flip) for fname in img_paths
+    )
+    features = [f for sub in feature_lists for f in sub]
+    return np.array(features, dtype=np.float32)
 
 
 def train_or_load_svm(force_train=False, augment_flip=False):
@@ -135,11 +151,11 @@ def train_or_load_svm(force_train=False, augment_flip=False):
         print(f"[INFO] Extracting HOG features from {len(car_images)} cars and {len(nocar_images)} non-cars...")
         X_car   = extract_hog_features(car_images, flip=augment_flip)
         X_nocar = extract_hog_features(nocar_images, flip=augment_flip)
-        np.savez(features_file, car=X_car, nocar=X_nocar)
+        np.savez_compressed(features_file, car=X_car, nocar=X_nocar)
         print(f"[INFO] Saved HOG features to '{features_file}'")
 
     # 2) Stack and label
-    X = np.vstack((X_car, X_nocar)).astype(np.float64)
+    X = np.vstack((X_car, X_nocar)).astype(np.float32)
     y = np.hstack((np.ones(len(X_car)), np.zeros(len(X_nocar))))
 
     # 3) Scale features
@@ -359,7 +375,7 @@ def make_frame_processor(svc, scaler):
         boxes = find_cars(frame, svc, scaler)
         history.append(boxes)
 
-        heat = np.zeros_like(frame[:,:,0]).astype(np.float)
+        heat = np.zeros_like(frame[:,:,0]).astype(np.float32)
         for b in history:
             add_heat(heat, b)
         apply_threshold(heat, HEAT_THRESHOLD)
